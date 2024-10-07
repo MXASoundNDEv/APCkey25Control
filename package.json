@@ -1,0 +1,6 @@
+{
+  "dependencies": {
+    "electron": "^32.1.2",
+    "midi": "^2.0.0"
+  }
+}
