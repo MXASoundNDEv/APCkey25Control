@@ -1,31 +1,40 @@
-document.addEventListener('DOMContentLoaded', () => {
-    let activeKnob = null;
+function makeDraggable(element) {
+    let offsetX, offsetY;
 
-    // Démarrer l'écoute des messages MIDI
-    window.midi.startListening();
+    element.onmousedown = function (e) {
+        offsetX = e.clientX - element.getBoundingClientRect().left;
+        offsetY = e.clientY - element.getBoundingClientRect().top;
+        document.onmousemove = moveElement;
+        document.onmouseup = stopDragging;
+    };
 
-    // Réagir aux messages MIDI
-    window.midi.onMessage((message) => {
-        const [command, note, velocity] = message;
+    function moveElement(e) {
+        element.style.left = e.clientX - offsetX + 'px';
+        element.style.top = e.clientY - offsetY + 'px';
+    }
 
-        // Si c'est un message de Control Change (CC) pour les potentiomètres (knobs)
-        if (command === 176 && note >= 48 && note <= 55) {
-            const knobNumber = note - 47;
-            const knobElement = document.getElementById(`knob-${knobNumber}`);
-            const indicator = knobElement.querySelector('.knob-indicator');
+    function stopDragging() {
+        document.onmouseup = null;
+        document.onmousemove = null;
+    }
+}
 
-            if (indicator) {
-                // Calculer l'angle de rotation en fonction de la vélocité (0-127 -> 0-270 degrés)
-                const rotationDegree = (velocity / 127) * 270 - 135;
-                indicator.style.transform = `rotate(${rotationDegree}deg)`;
+function closeModule(button) {
+    const frame = button.parentElement.parentElement; // Trouver le parent du bouton
+    frame.style.display = 'none'; // Cacher le module
+}
 
-                // Gérer la classe active pour ne laisser qu'un seul knob activé
-                if (activeKnob && activeKnob !== knobElement) {
-                    activeKnob.classList.remove('active');
-                }
-                knobElement.classList.add('active');
-                activeKnob = knobElement;
-            }
-        }
-    });
+const modules = document.querySelectorAll('.keyboard, .pads, .Round-pads, .knobs, .console-view');
+modules.forEach(module => {
+    makeDraggable(module);
+});
+
+const closeButtons = document.querySelectorAll('.close-btn');
+closeButtons.forEach(button => {
+    button.onclick = () => {
+        // Si tu veux fermer l'application
+        const frame = button.parentElement.parentElement;
+        frame.style.display = 'none'; // Cacher le module
+        // remote.getCurrentWindow().close(); // Pour fermer complètement l'application
+    };
 });
