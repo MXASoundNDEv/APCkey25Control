@@ -1,0 +1,48 @@
+<!-- midi-settings.html -->
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+    <meta charset="UTF-8">
+    <title>Configuration MIDI</title>
+</head>
+<body>
+    <h1>Configurer les ports MIDI</h1>
+    <label for="midiInput">Port MIDI Entrée :</label>
+    <select id="midiInput"></select>
+    <br><br>
+    <label for="midiOutput">Port MIDI Sortie :</label>
+    <select id="midiOutput"></select>
+    <br><br>
+    <button id="connectButton">Connecter</button>
+
+    <script>
+        // Recevoir les ports MIDI disponibles
+        window.electronAPI.receiveMidiPorts((event, { inputPorts, outputPorts }) => {
+            const inputSelect = document.getElementById('midiInput');
+            const outputSelect = document.getElementById('midiOutput');
+
+            inputPorts.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port.id;
+                option.text = port.name;
+                inputSelect.appendChild(option);
+            });
+
+            outputPorts.forEach(port => {
+                const option = document.createElement('option');
+                option.value = port.id;
+                option.text = port.name;
+                outputSelect.appendChild(option);
+            });
+        });
+
+        // Gérer le clic sur le bouton "Connecter"
+        document.getElementById('connectButton').addEventListener('click', () => {
+            const inputPort = parseInt(document.getElementById('midiInput').value);
+            const outputPort = parseInt(document.getElementById('midiOutput').value);
+
+            window.electronAPI.connectMidi({ inputPort, outputPort });
+        });
+    </script>
+</body>
+</html>

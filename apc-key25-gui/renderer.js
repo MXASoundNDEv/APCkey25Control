@@ -14,9 +14,15 @@ document.addEventListener('DOMContentLoaded', () => {
     const audioContext = new(window.AudioContext || window.webkitAudioContext)();
     // Créer une série de données pour les notes
     const noteDataSeries = new TimeSeries();
-    let output = null;
     const activeNotes = {};
     let ShiftEnable = false;
+    let input = null;
+    let output = null;
+    let midiAccess = null;
+    let availableInputs = [];
+    let availableOutputs = [];
+    let selectedInputId = null;
+    let selectedOutputId = null;
 
     // Création du masterGain et de l'analyser
     const masterGain = audioContext.createGain();
@@ -43,6 +49,22 @@ document.addEventListener('DOMContentLoaded', () => {
         [8, 9, 10, 11, 12, 13, 14, 15], // Ligne 4
         [0, 1, 2, 3, 4, 5, 6, 7] // Ligne 5
     ];
+
+    const ControlLayout = [
+        [64, 65, 66, 77, 68, 69, 70, 71]
+    ];
+
+    const SceneLayout = [
+        [82],
+        [83],
+        [84],
+        [85],
+        [86]
+    ]
+
+    const OtherLayout = [
+        [91, 93, 98, 81]
+    ]
 
     const font5x8 = {
         'A': [0b01110, 0b10001, 0b10001, 0b11111, 0b10001, 0b10001, 0b10001, 0b00000],
@@ -223,9 +245,15 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function ClearColorsPads() {
-        for (let i = 0; i < 40; i++) {
-            sendMIDIMessage([144, i, PadColors.None])
-        }
+        console.log("Clear Pad colors");
+
+        // Combiner les différentes mises en page en un seul tableau
+        const allLayouts = [...padLayout.flat(), ...ControlLayout.flat(), ...SceneLayout.flat(), ...OtherLayout.flat()];
+
+        // Envoyer le message MIDI pour effacer les couleurs pour chaque note de la mise en page combinée
+        allLayouts.forEach(note => {
+            sendMIDIMessage([144, note, PadColors.None]);
+        });
     }
 
     const midiNoteToFrequency = (note, tuning = 440) => {
@@ -423,28 +451,11 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         };
 
-        console.log("oscillator : ", oscillator);
-        console.log("gainNode : ", gainNode);
-
         return {
             oscillator,
             gainNode,
             stop
         };
-    };
-
-    const sendMIDIMessage = (message) => {
-        console.log("Envoi du message MIDI :", message);
-        if (output && typeof output.send === 'function') {
-            try {
-                output.send(message);
-            } catch (error) {
-                console.error(error);
-            }
-        } else {
-            console.log(output);
-            console.error("Erreur: la sortie MIDI n'est pas disponible.");
-        }
     };
 
     const handleNoteOn = (note, velocity) => {
@@ -549,6 +560,14 @@ document.addEventListener('DOMContentLoaded', () => {
             handlePad(command, note, velocity);
         } else if (command === 176 && note >= 48 && note <= 55) {
             handleKnob(note, velocity);
+        } else if (command === 144 && note == 68) {
+            console.log("Volume");
+            velocityEnabled = !velocityEnabled
+            if (velocityEnabled) {
+                sendMIDIMessage([144, note, PadColors.None]);
+            } else {
+                sendMIDIMessage([144, note, PadColors.Red]); //Only red on volume btn -_-
+            }
         } else if (command === 144 && note === 98) {
             if (ShiftEnable) {
                 sendMIDIMessage([144, note, PadColors.None]);
@@ -562,26 +581,94 @@ document.addEventListener('DOMContentLoaded', () => {
     };
 
     const initMIDI = () => {
-        console.log("Start Init Midi ...");
-        navigator.requestMIDIAccess().then(midiAccess => {
-            const input = [...midiAccess.inputs.values()].find(device => device.name.includes('APC Key 25'));
-            output = [...midiAccess.outputs.values()].find(device => device.name.includes('APC Key 25'));
+        console.log("Initialisation du MIDI...");
 
-            if (input) {
-                input.onmidimessage = handleMIDIMessage;
-                console.log(`MIDI Input: ${input}`);
-            } else {
-                console.error("Aucune entrée MIDI trouvée.");
-            }
+        if (!navigator.requestMIDIAccess) {
+            console.error("L'API Web MIDI n'est pas disponible dans ce navigateur.");
+            return;
+        }
 
-            if (!output) {
-                console.error("Aucune sortie MIDI trouvée.");
-            }
-        }).catch(() => {
-            console.error('Échec d\'accès au MIDI.');
+        navigator.requestMIDIAccess({ sysex: false }).then(access => {
+            midiAccess = access;
+            updateMidiPorts();
+
+            midiAccess.onstatechange = () => {
+                updateMidiPorts();
+            };
+
+            // Écouter les sélections de ports MIDI depuis le menu
+            window.electronAPI.onMidiPortSelected(({ type, id }) => {
+                if (type === 'input') {
+                    selectedInputId = id;
+                } else if (type === 'output') {
+                    selectedOutputId = id;
+                }
+                connectMidiDevices();
+            });
+        }).catch((error) => {
+            console.error('Échec d\'accès au MIDI :', error);
         });
     };
 
+    const updateMidiPorts = () => {
+        availableInputs = Array.from(midiAccess.inputs.values()).map(input => ({
+            id: input.id,
+            name: input.name
+        }));
+        availableOutputs = Array.from(midiAccess.outputs.values()).map(output => ({
+            id: output.id,
+            name: output.name
+        }));
+
+        // Envoyer les ports MIDI disponibles au processus principal
+        window.electronAPI.updateMidiPorts(availableInputs, availableOutputs);
+
+        // Si aucun port n'est sélectionné, sélectionner le premier par défaut
+        if (!selectedInputId && availableInputs.length > 0) {
+            selectedInputId = availableInputs[0].id;
+        }
+        if (!selectedOutputId && availableOutputs.length > 0) {
+            selectedOutputId = availableOutputs[0].id;
+        }
+
+        connectMidiDevices();
+    };
+
+    const connectMidiDevices = () => {
+        if (input) {
+            input.onmidimessage = null;
+        }
+
+        input = midiAccess.inputs.get(selectedInputId);
+        output = midiAccess.outputs.get(selectedOutputId);
+
+        if (input) {
+            input.onmidimessage = handleMIDIMessage;
+            console.log(`Entrée MIDI sélectionnée : ${input.name}`);
+        } else {
+            console.error("Aucune entrée MIDI sélectionnée.");
+        }
+
+        if (output) {
+            console.log(`Sortie MIDI sélectionnée : ${output.name}`);
+        } else {
+            console.error("Aucune sortie MIDI sélectionnée.");
+        }
+    };
+
+    const sendMIDIMessage = (message) => {
+        console.log("Envoi du message MIDI :", message);
+        if (output && typeof output.send === 'function') {
+            try {
+                output.send(message);
+            } catch (error) {
+                console.error("Erreur lors de l'envoi du message MIDI :", error);
+            }
+        } else {
+            console.error("Erreur: la sortie MIDI n'est pas disponible.");
+        }
+    };
+    
     const initConsoleLog = () => {
         const originalConsoleLog = console.log;
         console.log = function (...args) {
@@ -598,7 +685,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function makeDraggable(element) {
         let offsetX, offsetY;
         let isDocked = false;
-        
+
         element.onmousedown = function (e) {
             e.preventDefault();
             if (
@@ -611,8 +698,10 @@ document.addEventListener('DOMContentLoaded', () => {
             document.onmousemove = moveElement;
             document.onmouseup = stopDragging;
 
-             // Empêcher la sélection de texte lors du déplacement
-            document.onselectstart = function() { return false; };
+            // Empêcher la sélection de texte lors du déplacement
+            document.onselectstart = function () {
+                return false;
+            };
         };
 
         function moveElement(e) {
@@ -688,8 +777,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }
 
     function InitCloseButton() {
-        console.log(closeButtons);
-
         closeButtons.forEach(button => {
             button.onclick = () => {
                 const frame = button.parentElement;
@@ -769,10 +856,10 @@ document.addEventListener('DOMContentLoaded', () => {
                 name: module.querySelector('h2').innerText
             };
         });
-    
+
         // Envoyer la liste des modules au processus principal
         window.electronAPI.generateMenu(modules);
-    
+
         // Écouter les événements pour basculer les modules envoyés depuis le processus principal
         window.electronAPI.toggleModule((event, moduleId) => {
             toggleModuleById(moduleId);
@@ -782,7 +869,6 @@ document.addEventListener('DOMContentLoaded', () => {
     function InitFrame() {
         InitCloseButton()
         frames.forEach(frame => {
-            console.log(frame);
             makeDraggable(frame);
             // frame.style.display = 'none';
         });
@@ -808,12 +894,16 @@ document.addEventListener('DOMContentLoaded', () => {
     // Initialisation des événements et de l'interface
     initVelocityToggle();
     initClearColorToggle();
+    initRainBowButton();
+
+    
     initMIDI();
+    ClearColorsPads();
+
     InitGraph();
     initConsoleLog();
-    initRainBowButton();
     drawOscilloscope();
-    ClearColorsPads();
+
     InitFrame();
     InitMenu()
 });
