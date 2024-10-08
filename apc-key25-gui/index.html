@@ -11,7 +11,8 @@
 <body>
 
     <h1>Visualisation APC Key 25</h1>
-    <div class="frame" id="frame">
+    <!-- Controls -->
+    <div class="frame" id="frame-Controls">
         <button class="close-btn" id="close-btn">X</button>
         <h2>Controls</h2>
         <div class="controls">
@@ -31,9 +32,9 @@
     </div>
 
     <!-- Clavier 25 touches -->
-    <div class="frame" id="frame">
+    <div class="frame" id="frame-Keyboad">
         <button class="close-btn" id="close-btn">X</button>
-        <h2>Controls</h2>
+        <h2>Clavier</h2>
         <div class="keyboard">
             <!-- Touche noires (au-dessus des touches blanches) -->
             <div class="black-keys">
@@ -73,8 +74,9 @@
     </div>
 
     <!-- Matrice de 8x5 pads -->
-    <div class="frame" id="frame">
+    <div class="frame" id="frame-Pads">
         <button class="close-btn" id="close-btn">X</button>
+        <h2>Pads</h2>
         <div class="pads">
             <div id="pad-0" class="pad"></div>
             <div id="pad-1" class="pad"></div>
@@ -135,8 +137,9 @@
     </div>
 
     <!-- Potentiomètres -->
-    <div class="frame" id="frame">
+    <div class="frame" id="frame-knobs">
         <button class="close-btn" id="close-btn">X</button>
+        <h2>Knob</h2>
         <div class="knobs">
             <div id="knob-1" class="knob">
                 <div class="knob-indicator"></div>
@@ -173,14 +176,18 @@
         </div>
     </div>
 
-    <div class="frame resizable-module" id="frame">
-        <h1>Console de Visualisation</h1>
+    <!-- Console -->
+    <div class="frame resizable-module" id="frame-Console">
+        <h2>Console de Visualisation</h2>
         <button class="close-btn" id="close-btn">X</button>
         <textarea class="console-view" id="console-output" readonly></textarea>
         <div class="resize-handle"></div>
     </div>
 
-    <div class="frame resizable-module" id="frame">
+    <!-- ADSR -->
+    <div class="frame resizable-module" id="frame-ADSRs">
+        <button class="close-btn">X</button>
+        <h2>adsr control</h2>
         <div class="adsr-controls">
             <label for="attack-range">Attack</label>
             <input type="range" id="attack-range" min="0" max="2" step="0.01" value="0.1">
@@ -196,7 +203,10 @@
         </div>
     </div>
 
-    <div class="frame resizable-module" id="frame">
+    <!-- LFO -->
+    <div class="frame resizable-module" id="frame-LFOs">
+        <button class="close-btn">X</button>
+        <h2>lfo controls</h2>
         <div class="lfo-controls">
             <label for="vibrato-frequency">Vibrato Frequency</label>
             <input type="range" id="vibrato-frequency" min="0" max="20" step="0.1" value="5">
@@ -206,7 +216,9 @@
         </div>
     </div>
 
-    <div class="frame resizable-module" id="frame">
+    <!-- Filter -->
+    <div class="frame resizable-module" id="frame-Filters">
+        <h2>filter controls</h2>
         <div class="filter-controls">
             <label for="filter-frequency">Filter Frequency</label>
             <input type="range" id="filter-frequency" min="100" max="10000" step="10" value="1000">
@@ -216,13 +228,15 @@
         </div>        
     </div>
 
-    <div class="frame chart-frame">
+    <!-- Chart  -->
+    <div class="frame chart-frame" id="frame-Charts">
         <button class="close-btn">X</button>
         <h2>Graphique des Notes</h2>
         <canvas id="notes-chart" width="800" height="200"></canvas>
     </div>
 
-    <div class="frame oscilloscope-frame">
+    <!-- Oscilloscope  -->
+    <div class="frame oscilloscope-frame" id="frame-Oscilloscope">
         <button class="close-btn">X</button>
         <h2>Oscilloscope</h2>
         <canvas id="oscilloscope" width="800" height="200"></canvas>

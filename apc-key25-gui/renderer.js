@@ -12,13 +12,16 @@ document.addEventListener('DOMContentLoaded', () => {
     const velocityToggleButton = document.getElementById("velocity-toggle");
     const volumeRange = document.getElementById('Audio-Range');
     const audioContext = new(window.AudioContext || window.webkitAudioContext)();
+    // Créer une série de données pour les notes
+    const noteDataSeries = new TimeSeries();
     let output = null;
+    const activeNotes = {};
     let ShiftEnable = false;
 
     // Création du masterGain et de l'analyser
     const masterGain = audioContext.createGain();
     masterGain.connect(audioContext.destination);
-    
+
     const analyser = audioContext.createAnalyser();
     analyser.fftSize = 2048;
     masterGain.connect(analyser);
@@ -420,6 +423,9 @@ document.addEventListener('DOMContentLoaded', () => {
             };
         };
 
+        console.log("oscillator : ", oscillator);
+        console.log("gainNode : ", gainNode);
+
         return {
             oscillator,
             gainNode,
@@ -440,8 +446,6 @@ document.addEventListener('DOMContentLoaded', () => {
             console.error("Erreur: la sortie MIDI n'est pas disponible.");
         }
     };
-
-    const activeNotes = {};
 
     const handleNoteOn = (note, velocity) => {
         const keyElement = document.getElementById(`key-${note}`);
@@ -594,8 +598,9 @@ document.addEventListener('DOMContentLoaded', () => {
     function makeDraggable(element) {
         let offsetX, offsetY;
         let isDocked = false;
-
+        
         element.onmousedown = function (e) {
+            e.preventDefault();
             if (
                 e.target.classList.contains('close-btn') ||
                 e.target.classList.contains('resize-handle')
@@ -605,6 +610,9 @@ document.addEventListener('DOMContentLoaded', () => {
             offsetY = e.clientY - element.getBoundingClientRect().top;
             document.onmousemove = moveElement;
             document.onmouseup = stopDragging;
+
+             // Empêcher la sélection de texte lors du déplacement
+            document.onselectstart = function() { return false; };
         };
 
         function moveElement(e) {
@@ -675,6 +683,7 @@ document.addEventListener('DOMContentLoaded', () => {
         function stopDragging() {
             document.onmouseup = null;
             document.onmousemove = null;
+            document.onselectstart = null; // Réactiver la sélection de texte
         }
     }
 
@@ -684,7 +693,12 @@ document.addEventListener('DOMContentLoaded', () => {
         closeButtons.forEach(button => {
             button.onclick = () => {
                 const frame = button.parentElement;
-                frame.style.display = 'none';
+                if (frame) {
+                    frame.style.display = "none";
+                    window.electronAPI.updateMenu(frame.id, false); // Envoyer un message au processus principal pour mettre à jour le menu
+                } else {
+                    console.error(`Module avec l'ID ${frame.id} introuvable`);
+                }
             };
         });
     }
@@ -692,7 +706,7 @@ document.addEventListener('DOMContentLoaded', () => {
     function makeResizable(element) {
         const resizer = element.querySelector('.resize-handle');
         let originalWidth, originalHeight, originalMouseX, originalMouseY;
-
+        if (!resizer) return
         resizer.addEventListener('mousedown', function (e) {
             e.preventDefault();
             originalWidth = parseFloat(getComputedStyle(element).width);
@@ -736,12 +750,9 @@ document.addEventListener('DOMContentLoaded', () => {
             maxValue: 127,
             minValue: 0,
         });
-    
+
         smoothie.streamTo(chartCanvas, 1000 /* délai de retard en ms */ );
-    
-        // Créer une série de données pour les notes
-        const noteDataSeries = new TimeSeries();
-    
+
         // Ajouter la série au graphique
         smoothie.addTimeSeries(noteDataSeries, {
             strokeStyle: 'rgba(0, 255, 0, 1)',
@@ -750,15 +761,48 @@ document.addEventListener('DOMContentLoaded', () => {
         });
     }
 
+    function InitMenu() {
+        if (!frames) return
+        const modules = Array.from(frames).map(module => {
+            return {
+                id: module.id,
+                name: module.querySelector('h2').innerText
+            };
+        });
+    
+        // Envoyer la liste des modules au processus principal
+        window.electronAPI.generateMenu(modules);
+    
+        // Écouter les événements pour basculer les modules envoyés depuis le processus principal
+        window.electronAPI.toggleModule((event, moduleId) => {
+            toggleModuleById(moduleId);
+        });
+    }
+
     function InitFrame() {
         InitCloseButton()
         frames.forEach(frame => {
             console.log(frame);
             makeDraggable(frame);
+            // frame.style.display = 'none';
         });
         resizableModules.forEach(module => {
             makeResizable(module);
         });
+    }
+
+    // Fonction pour basculer l'affichage des modules
+    function toggleModuleById(moduleId) {
+        const module = document.getElementById(moduleId);
+        if (module) {
+            if (module.style.display === "none") {
+                module.style.display = "block";
+            } else {
+                module.style.display = "none";
+            }
+        } else {
+            console.error(`Module avec l'ID ${moduleId} introuvable`);
+        }
     }
 
     // Initialisation des événements et de l'interface
@@ -771,4 +815,5 @@ document.addEventListener('DOMContentLoaded', () => {
     drawOscilloscope();
     ClearColorsPads();
     InitFrame();
+    InitMenu()
 });
