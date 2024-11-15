@@ -1,4 +1,4 @@
-const { app, BrowserWindow, ipcMain, Menu } = require('electron');
+const { app, BrowserWindow, ipcMain, Menu, crashReporter } = require('electron');
 const path = require('path');
 
 let win;
@@ -20,7 +20,12 @@ function createWindow() {
             enableWebMIDI: true,
         }
     });
-
+    crashReporter.start({
+        productName: 'APC Key 25 GUI',
+        companyName: 'MXA',
+        uploadToServer: false,
+        compress: true,
+    });
     win.loadFile('index.html');
 
     ipcMain.on('generate-menu', (event, receivedModuleList) => {
@@ -174,12 +179,25 @@ function generateMenu() {
         })
     };
 
+    const devMenu = {
+        label: 'Développeur',
+        submenu: [
+            {
+                label: 'Crash',
+                click: () => {
+                    process.crash();
+                }
+            }
+        ]
+    };
+
     const menuTemplate = [
         fileMenu,
         viewMenu,
         modulesMenu,
         midiMenu,
-        helpMenu
+        helpMenu,
+        devMenu
     ];
 
     const menu = Menu.buildFromTemplate(menuTemplate);
