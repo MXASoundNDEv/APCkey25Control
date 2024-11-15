@@ -1,4 +1,12 @@
-const { app, BrowserWindow, ipcMain, Menu, crashReporter } = require('electron');
+const { log } = require('console');
+const {
+    app,
+    BrowserWindow,
+    ipcMain,
+    Menu,
+    crashReporter,
+    dialog
+} = require('electron');
 const path = require('path');
 
 let win;
@@ -43,24 +51,35 @@ function createWindow() {
         generateMenu();
     });
 
-    ipcMain.on('update-midi-ports', (event, { inputs, outputs }) => {
+    ipcMain.on('update-midi-ports', (event, {
+        inputs,
+        outputs
+    }) => {
         midiInputs = inputs;
         midiOutputs = outputs;
         generateMenu();
     });
 
-    ipcMain.on('select-midi-port', (event, { type, id }) => {
+    ipcMain.on('select-midi-port', (event, {
+        type,
+        id
+    }) => {
         if (type === 'input') {
             selectedMidiInput = id;
         } else if (type === 'output') {
             selectedMidiOutput = id;
         }
         // Inform the renderer process about the new selection
-        win.webContents.send('midi-port-selected', { type, id });
+        win.webContents.send('midi-port-selected', {
+            type,
+            id
+        });
     });
 
     ipcMain.on('show-about', () => {
-        const { dialog } = require('electron');
+        const {
+            dialog
+        } = require('electron');
         dialog.showMessageBox(win, {
             type: 'info',
             title: 'À propos',
@@ -73,8 +92,7 @@ function createWindow() {
 function generateMenu() {
     const fileMenu = {
         label: 'Fichier',
-        submenu: [
-            {
+        submenu: [{
                 label: 'Nouvelle fenêtre',
                 click: () => {
                     const newWindow = new BrowserWindow({
@@ -90,7 +108,9 @@ function generateMenu() {
                     newWindow.loadFile('index.html');
                 }
             },
-            { type: 'separator' },
+            {
+                type: 'separator'
+            },
             {
                 label: 'Quitter',
                 role: 'quit'
@@ -100,22 +120,36 @@ function generateMenu() {
 
     const viewMenu = {
         label: 'Affichage',
-        submenu: [
-            { role: 'reload' },
-            { role: 'toggleDevTools' },
-            { type: 'separator' },
-            { role: 'resetZoom' },
-            { role: 'zoomIn' },
-            { role: 'zoomOut' },
-            { type: 'separator' },
-            { role: 'togglefullscreen' }
+        submenu: [{
+                role: 'reload'
+            },
+            {
+                role: 'toggleDevTools'
+            },
+            {
+                type: 'separator'
+            },
+            {
+                role: 'resetZoom'
+            },
+            {
+                role: 'zoomIn'
+            },
+            {
+                role: 'zoomOut'
+            },
+            {
+                type: 'separator'
+            },
+            {
+                role: 'togglefullscreen'
+            }
         ]
     };
 
     const midiMenu = {
         label: 'MIDI',
-        submenu: [
-            {
+        submenu: [{
                 label: 'Entrées MIDI',
                 submenu: midiInputs.map(input => ({
                     label: input.name,
@@ -123,7 +157,10 @@ function generateMenu() {
                     checked: input.id === selectedMidiInput,
                     click: () => {
                         selectedMidiInput = input.id;
-                        win.webContents.send('midi-port-selected', { type: 'input', id: input.id });
+                        win.webContents.send('midi-port-selected', {
+                            type: 'input',
+                            id: input.id
+                        });
                         generateMenu();
                     }
                 }))
@@ -136,7 +173,10 @@ function generateMenu() {
                     checked: output.id === selectedMidiOutput,
                     click: () => {
                         selectedMidiOutput = output.id;
-                        win.webContents.send('midi-port-selected', { type: 'output', id: output.id });
+                        win.webContents.send('midi-port-selected', {
+                            type: 'output',
+                            id: output.id
+                        });
                         generateMenu();
                     }
                 }))
@@ -146,11 +186,12 @@ function generateMenu() {
 
     const helpMenu = {
         label: 'Aide',
-        submenu: [
-            {
+        submenu: [{
                 label: 'Documentation',
                 click: async () => {
-                    const { shell } = require('electron');
+                    const {
+                        shell
+                    } = require('electron');
                     await shell.openExternal('https://www.electronjs.org/docs');
                 }
             },
@@ -181,11 +222,27 @@ function generateMenu() {
 
     const devMenu = {
         label: 'Développeur',
-        submenu: [
-            {
+        submenu: [{
                 label: 'Crash',
+                click: async() => {
+                    const result = await dialog.showMessageBox({
+                        title : "CRASH BUTTON",
+                        message : "This button make app crash instantly are you sure ?",
+                        buttons : ["MAKE APP CRASH", "Cancel"]
+                    })
+                    
+                    if (result.response == 0) {
+                        console.warn("Manual Crash");
+                        process.crash()
+                    }
+                }
+
+            },
+            {
+                label: 'Open Crash Log debug',
                 click: () => {
-                    process.crash();
+                    const crashDir = app.getPath('crashDumps');
+                    FileDialog('CrashLog Directory', crashDir, 'Debug')
                 }
             }
         ]
@@ -202,6 +259,24 @@ function generateMenu() {
 
     const menu = Menu.buildFromTemplate(menuTemplate);
     Menu.setApplicationMenu(menu);
+}
+
+function FileDialog(title,Dir, BtnLabel, Properties = ['openFile']) {
+    const options = {
+        title: title,
+        defaultPath: Dir,
+        buttonLabel: BtnLabel,
+        properties: Properties // 'openFile' pour fichiers, 'openDirectory' pour dossiers (Par Default)
+    };
+
+    dialog.showOpenDialog(options).then((result) => {
+        if (!result.canceled) {
+            console.log('Chemin(s) sélectionné(s) :', result.filePaths);
+            return result.filePath
+        }
+    }).catch((err) => {
+        console.error('Erreur lors de l\'ouverture de la boîte de dialogue :', err);
+    });
 }
 
 app.whenReady().then(createWindow);
