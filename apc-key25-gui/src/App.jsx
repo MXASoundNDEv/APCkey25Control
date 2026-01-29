@@ -6,6 +6,8 @@ import { Oscilloscope } from './components/Oscilloscope';
 import { ConsolePanel } from './components/ConsolePanel';
 import { SynthControls } from './components/SynthControls';
 import { QuickActions } from './components/QuickActions';
+import { PianoKeyboard } from './components/PianoKeyboard';
+import { StepSequencer } from './components/StepSequencer';
 import { useMidi } from './hooks/useMidi';
 import { useSynth } from './hooks/useSynth';
 
@@ -30,6 +32,21 @@ const padLayout = [
 const controlLayout = [[64, 65, 66, 77, 68, 69, 70, 71]];
 const sceneLayout = [[82], [83], [84], [85], [86]];
 const otherLayout = [[91, 93, 98, 81]];
+const KEYBOARD_NOTE_MAP = {
+  KeyA: 60,
+  KeyW: 61,
+  KeyS: 62,
+  KeyE: 63,
+  KeyD: 64,
+  KeyF: 65,
+  KeyT: 66,
+  KeyG: 67,
+  KeyY: 68,
+  KeyH: 69,
+  KeyU: 70,
+  KeyJ: 71,
+  KeyK: 72
+};
 
 export default function App() {
   const flatPadNotes = useMemo(() => padLayout.flat(), []);
@@ -45,7 +62,9 @@ export default function App() {
 
   const [velocityEnabled, setVelocityEnabled] = useState(true);
   const [shiftEnabled, setShiftEnabled] = useState(false);
+  const [tempo, setTempo] = useState(120);
   const [activePads, setActivePads] = useState(new Set());
+  const [activeNotes, setActiveNotes] = useState(new Set());
   const [logs, setLogs] = useState([]);
   const [lastNote, setLastNote] = useState(null);
   const [knobValues, setKnobValues] = useState({
@@ -60,11 +79,29 @@ export default function App() {
   });
 
   const messageHandlerRef = useRef(null);
+  const heldComputerKeys = useRef(new Set());
+  const recordStartRef = useRef(null);
+  const loopTimersRef = useRef([]);
+  const recordingRef = useRef(false);
+  const loopingRef = useRef(false);
+  const loopEventsRef = useRef([]);
+  const loopLengthRef = useRef(0);
+  const [recording, setRecording] = useState(false);
+  const [looping, setLooping] = useState(false);
+  const [loopEvents, setLoopEvents] = useState([]);
+  const [loopLength, setLoopLength] = useState(0);
   const midiListener = useCallback((message) => {
     if (messageHandlerRef.current) {
       messageHandlerRef.current(message);
     }
   }, []);
+
+  useEffect(() => {
+    recordingRef.current = recording;
+    loopingRef.current = looping;
+    loopEventsRef.current = loopEvents;
+    loopLengthRef.current = loopLength;
+  }, [recording, looping, loopEvents, loopLength]);
 
   const {
     midiSupported,
@@ -95,6 +132,29 @@ export default function App() {
     [sendMessage]
   );
 
+  const clearLoopTimers = useCallback(() => {
+    loopTimersRef.current.forEach((id) => clearTimeout(id));
+    loopTimersRef.current = [];
+  }, []);
+
+  const recordEvent = useCallback(
+    (note, type, velocity = 0, useVelocityScaling = true) => {
+      if (!recordingRef.current || recordStartRef.current === null) return;
+      const time = performance.now() - recordStartRef.current;
+      setLoopEvents((prev) => [...prev, { note, type, velocity, useVelocityScaling, time }]);
+    },
+    []
+  );
+
+  const setNoteState = useCallback((note, isActive) => {
+    setActiveNotes((prev) => {
+      const next = new Set(prev);
+      if (isActive) next.add(note);
+      else next.delete(note);
+      return next;
+    });
+  }, []);
+
   const handlePadState = useCallback(
     (note, isActive) => {
       setActivePads((prev) => {
@@ -106,6 +166,24 @@ export default function App() {
       sendPadColor(note, isActive ? PadColors.Green : PadColors.None);
     },
     [sendPadColor]
+  );
+
+  const startNote = useCallback(
+    (note, velocity = 100, useVelocityScaling = true) => {
+      recordEvent(note, 'on', velocity, useVelocityScaling);
+      noteOn(note, velocity, useVelocityScaling && velocityEnabled);
+      setNoteState(note, true);
+    },
+    [noteOn, recordEvent, setNoteState, velocityEnabled]
+  );
+
+  const stopNote = useCallback(
+    (note) => {
+      recordEvent(note, 'off', 0, true);
+      noteOff(note);
+      setNoteState(note, false);
+    },
+    [noteOff, recordEvent, setNoteState]
   );
 
   const handleKnob = useCallback(
@@ -146,10 +224,83 @@ export default function App() {
     [setParam]
   );
 
+  const stopLoop = useCallback(() => {
+    clearLoopTimers();
+    setLooping(false);
+    loopingRef.current = false;
+    // Stoppe toutes les notes actives pour éviter les notes bloquées
+    activeNotes.forEach((note) => stopNote(note));
+  }, [activeNotes, clearLoopTimers, stopNote]);
+
+  const scheduleLoopCycle = useCallback(() => {
+    const events = loopEventsRef.current;
+    const duration = loopLengthRef.current;
+    if (!events.length || duration <= 0 || !loopingRef.current) return;
+
+    events.forEach((ev) => {
+      const id = setTimeout(() => {
+        if (!loopingRef.current) return;
+        if (ev.type === 'on') startNote(ev.note, ev.velocity, ev.useVelocityScaling);
+        else stopNote(ev.note);
+      }, ev.time);
+      loopTimersRef.current.push(id);
+    });
+
+    const nextCycle = setTimeout(() => {
+      scheduleLoopCycle();
+    }, duration);
+    loopTimersRef.current.push(nextCycle);
+  }, [startNote, stopNote]);
+
+  const startLoop = useCallback(() => {
+    if (!loopEvents.length || loopLength <= 0) return;
+    clearLoopTimers();
+    setLooping(true);
+    loopingRef.current = true;
+    scheduleLoopCycle();
+  }, [clearLoopTimers, loopEvents, loopLength, scheduleLoopCycle]);
+
+  const toggleLoop = useCallback(() => {
+    if (loopingRef.current) {
+      stopLoop();
+    } else {
+      startLoop();
+    }
+  }, [startLoop, stopLoop]);
+
+  const toggleRecording = useCallback(() => {
+    if (recordingRef.current) {
+      setRecording(false);
+      recordingRef.current = false;
+      const now = performance.now();
+      const rawDuration = Math.max(100, now - (recordStartRef.current || now));
+      setLoopEvents((prev) => {
+        const sorted = [...prev].sort((a, b) => a.time - b.time);
+        loopEventsRef.current = sorted;
+        const lastEvent = sorted[sorted.length - 1];
+        const safeTail = 200; // ms pour laisser finir le release
+        const duration = Math.max(rawDuration, (lastEvent?.time || 0) + safeTail);
+        setLoopLength(duration);
+        loopLengthRef.current = duration;
+        return sorted;
+      });
+    } else {
+      clearLoopTimers();
+      setLooping(false);
+      loopingRef.current = false;
+      setLoopEvents([]);
+      loopEventsRef.current = [];
+      recordStartRef.current = performance.now();
+      setRecording(true);
+      recordingRef.current = true;
+    }
+  }, [clearLoopTimers]);
+
   const clearPads = useCallback(() => {
     allDeviceNotes.forEach((note) => sendPadColor(note, PadColors.None));
+    flatPadNotes.forEach((note) => stopNote(note));
     setActivePads(new Set());
-  }, [allDeviceNotes, sendPadColor]);
+  }, [allDeviceNotes, flatPadNotes, sendPadColor, stopNote]);
 
   const rainbow = useCallback(() => {
     flatPadNotes.forEach((note) => {
@@ -163,12 +314,12 @@ export default function App() {
       const nextState = !activePads.has(note);
       handlePadState(note, nextState);
       if (nextState) {
-        noteOn(note, 100, velocityEnabled);
+        startNote(note, 100, true);
       } else {
-        noteOff(note);
+        stopNote(note);
       }
     },
-    [activePads, handlePadState, noteOn, noteOff, velocityEnabled]
+    [activePads, handlePadState, startNote, stopNote]
   );
 
   const handleMidiMessage = useCallback(
@@ -182,11 +333,11 @@ export default function App() {
 
       if ((command === 0x90 || status === 145) && velocity > 0) {
         // Note ON
-        noteOn(note, velocity, velocityEnabled);
+        startNote(note, velocity, true);
         if (isPad) handlePadState(note, true);
       } else if (command === 0x80 || status === 129 || (command === 0x90 && velocity === 0)) {
         // Note OFF
-        noteOff(note);
+        stopNote(note);
         if (isPad) handlePadState(note, false);
       } else if (command === 0xb0 && note >= 48 && note <= 55) {
         handleKnob(note, velocity);
@@ -215,10 +366,9 @@ export default function App() {
       flatPadNotes,
       handleKnob,
       handlePadState,
-      noteOff,
-      noteOn,
       sendPadColor,
-      velocityEnabled
+      startNote,
+      stopNote
     ]
   );
 
@@ -227,6 +377,45 @@ export default function App() {
   useEffect(() => {
     document.title = 'APC Key 25 Control';
   }, []);
+
+  useEffect(() => {
+    return () => {
+      clearLoopTimers();
+    };
+  }, [clearLoopTimers]);
+
+  useEffect(() => {
+    const onKeyDown = (e) => {
+      if (e.repeat) return;
+      if (
+        e.target.tagName === 'TEXTAREA' ||
+        e.target.tagName === 'SELECT' ||
+        (e.target.tagName === 'INPUT' && e.target.type !== 'range')
+      )
+        return;
+      const note = KEYBOARD_NOTE_MAP[e.code];
+      if (note !== undefined && !heldComputerKeys.current.has(e.code)) {
+        e.preventDefault();
+        heldComputerKeys.current.add(e.code);
+        startNote(note, 110, false);
+      }
+    };
+
+    const onKeyUp = (e) => {
+      const note = KEYBOARD_NOTE_MAP[e.code];
+      if (note !== undefined) {
+        heldComputerKeys.current.delete(e.code);
+        stopNote(note);
+      }
+    };
+
+    window.addEventListener('keydown', onKeyDown);
+    window.addEventListener('keyup', onKeyUp);
+    return () => {
+      window.removeEventListener('keydown', onKeyDown);
+      window.removeEventListener('keyup', onKeyUp);
+    };
+  }, [startNote, stopNote]);
 
   return (
     <div className="page">
@@ -253,6 +442,11 @@ export default function App() {
                 return next;
               });
             }}
+            recording={recording}
+            looping={looping}
+            hasLoop={!!loopEvents.length}
+            onToggleRec={toggleRecording}
+            onToggleLoop={toggleLoop}
           />
         </div>
       </header>
@@ -278,11 +472,24 @@ export default function App() {
             title="Pads 5x8"
           />
 
+          <PianoKeyboard
+            activeNotes={activeNotes}
+            onPress={(n) => startNote(n, 110, false)}
+            onRelease={stopNote}
+          />
+
           <KnobRow values={knobValues} />
         </div>
 
         <div className="column">
           <SynthControls params={params} setParam={setParam} />
+          <StepSequencer
+            tempo={tempo}
+            onTempoChange={setTempo}
+            startNote={startNote}
+            stopNote={stopNote}
+            lastNote={lastNote}
+          />
           <Oscilloscope analyser={analyser} />
           <ConsolePanel logs={logs} />
         </div>

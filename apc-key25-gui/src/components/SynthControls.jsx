@@ -46,6 +46,9 @@ export function SynthControls({ params, setParam }) {
           {slider('Vibrato depth', 'vibratoDepth', 0, 100, 0.5)}
           {slider('Filtre fréquence', 'filterFreq', 200, 12000, 10, 'Hz')}
           {slider('Filtre Q', 'filterQ', 0.1, 20, 0.1)}
+          {slider('Suivi tonal filtre', 'filterTracking', 0, 1.5, 0.01)}
+          {slider('Mix harmonique', 'harmonicMix', 0, 1, 0.01)}
+          {slider('Inclinaison harmonique', 'harmonicTilt', 0, 1.2, 0.01)}
         </div>
       </div>
     </div>
