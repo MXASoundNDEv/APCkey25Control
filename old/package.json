@@ -1,0 +1,24 @@
+{
+  "name": "apckey25control",
+  "version": "1.0.0",
+  "description": "Ce projet permet de contrôler et visualiser l'**Akai APC Key 25** à l'aide de JavaScript et de l'API Web MIDI. Il gère les entrées MIDI, permet de jouer des notes avec vélocité, d'allumer/éteindre les LED des pads, et inclut la gestion de boutons spécifiques, tels que le bouton **Shift**.",
+  "homepage": "https://github.com/MXASoundNDEv/APCkey25Control#readme",
+  "bugs": {
+    "url": "https://github.com/MXASoundNDEv/APCkey25Control/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/MXASoundNDEv/APCkey25Control.git"
+  },
+  "license": "ISC",
+  "author": "",
+  "type": "commonjs",
+  "main": "key25.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "midi": "^2.0.0"
+  },
+  "devDependencies": {}
+}

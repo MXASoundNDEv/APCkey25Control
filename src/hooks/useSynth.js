@@ -1,9 +1,60 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-// Convertit un numéro de note MIDI en fréquence (Hz), avec La4 = 440 Hz.
+/**
+ * Paramètres du synthé.
+ * @typedef {Object} SynthParams
+ * @property {number} master Volume général (0-1).
+ * @property {number} attack Temps d’attaque (s).
+ * @property {number} decay Temps de decay (s).
+ * @property {number} sustain Niveau de sustain (0-1).
+ * @property {number} release Temps de release (s).
+ * @property {number} vibratoFreq Fréquence du LFO (Hz).
+ * @property {number} vibratoDepth Profondeur du vibrato (cents approx.).
+ * @property {number} filterFreq Fréquence de coupure (Hz).
+ * @property {number} filterQ Résonance du filtre.
+ * @property {number} filterTracking Suivi de hauteur (0-1).
+ * @property {number} harmonicMix Niveau de l’harmonique (0-1).
+ * @property {number} harmonicTilt Atténuation en hauteur (0-1).
+ * @property {('sine'|'square'|'sawtooth'|'triangle')} oscillatorType Forme d’onde.
+ */
+
+/**
+ * Voix active du synthé.
+ * @typedef {Object} SynthVoice
+ * @property {number} note Numéro de note MIDI.
+ * @property {OscillatorNode} oscillator Oscillateur principal.
+ * @property {OscillatorNode} harmonicOsc Oscillateur harmonique (octave +1).
+ * @property {GainNode} harmonicGain Gain de l’harmonique.
+ * @property {OscillatorNode} vibratoOsc Oscillateur LFO.
+ * @property {GainNode} vibratoGain Gain de modulation du LFO.
+ * @property {GainNode} gainNode Enveloppe de gain (ADSR).
+ * @property {BiquadFilterNode} filter Filtre passe‑bas.
+ */
+
+/**
+ * API publique du hook useSynth.
+ * @typedef {Object} UseSynthReturn
+ * @property {SynthParams} params État courant des paramètres.
+ * @property {(key: keyof SynthParams, value: SynthParams[keyof SynthParams]) => void} setParam
+ * Met à jour un paramètre et resynchronise les voix actives.
+ * @property {(note: number, velocity?: number, velocityScaling?: boolean) => void} noteOn
+ * Démarre une note MIDI.
+ * @property {(note: number) => void} noteOff
+ * Relâche une note MIDI.
+ * @property {AnalyserNode|null} analyser Analyseur audio pour l’oscilloscope.
+ */
+
+/**
+ * Convertit un numéro de note MIDI en fréquence (Hz), avec La4 = 440 Hz.
+ * @param {number} note Numéro de note MIDI (0-127).
+ * @returns {number} Fréquence en Hz.
+ */
 const noteToFrequency = (note) => 440 * Math.pow(2, (note - 69) / 12);
 
-// Valeurs par défaut du synthé. Toutes ces valeurs sont modifiables via `setParam`.
+/**
+ * Valeurs par défaut du synthé. Toutes ces valeurs sont modifiables via `setParam`.
+ * @type {SynthParams}
+ */
 const defaultParams = {
   master: 0.6,
   attack: 0.02,
@@ -20,22 +71,35 @@ const defaultParams = {
   oscillatorType: 'sawtooth'
 };
 
-// Calcule le niveau de l'oscillateur harmonique en fonction de la hauteur.
-// L'objectif est d'avoir plus de brillance autour du Do central.
+/**
+ * Calcule le niveau de l'oscillateur harmonique en fonction de la hauteur.
+ * L'objectif est d'avoir plus de brillance autour du Do central.
+ * @param {number} note Numéro de note MIDI.
+ * @param {SynthParams} params Paramètres du synthé.
+ * @returns {number} Niveau de l'harmonique (0-1).
+ */
 const harmonicLevel = (note, params) => {
   const relative = (note - 60) / 24; // plus brillant autour du Do central
   const tilt = Math.max(0, 1 - params.harmonicTilt * relative);
   return Math.min(1, Math.max(0, params.harmonicMix * tilt));
 };
 
-// Suit la hauteur de la note pour adapter la fréquence de coupure du filtre.
+/**
+ * Suit la hauteur de la note pour adapter la fréquence de coupure du filtre.
+ * @param {number} note Numéro de note MIDI.
+ * @param {SynthParams} params Paramètres du synthé.
+ * @returns {number} Fréquence de coupure en Hz.
+ */
 const trackedFilterFreq = (note, params) => {
   const base = params.filterFreq;
   const ratio = Math.pow(noteToFrequency(note) / 440, params.filterTracking);
   return Math.min(18000, Math.max(80, base * ratio));
 };
 
-// Hook principal du synthé : gère le moteur audio et l'état des paramètres.
+/**
+ * Hook principal du synthé : gère le moteur audio et l'état des paramètres.
+ * @returns {UseSynthReturn} API publique du synthé.
+ */
 export function useSynth() {
   const [params, setParams] = useState(defaultParams);
   const audioCtxRef = useRef(null);
@@ -80,12 +144,23 @@ export function useSynth() {
     }
   }, [params.master]);
 
-  // Met à jour un paramètre du synthé (ex: `attack`, `filterFreq`, etc.).
+  /**
+   * Met à jour un paramètre du synthé (ex: `attack`, `filterFreq`, etc.).
+   * @param {keyof SynthParams} key Nom du paramètre.
+   * @param {SynthParams[keyof SynthParams]} value Valeur à appliquer.
+   * @returns {void}
+   */
   const setParam = useCallback((key, value) => {
     setParams((prev) => ({ ...prev, [key]: value }));
   }, []);
 
-  // Déclenche une note : crée une voix (oscillateurs + enveloppe + filtre + vibrato).
+  /**
+   * Déclenche une note : crée une voix (oscillateurs + enveloppe + filtre + vibrato).
+   * @param {number} note Numéro de note MIDI (0-127).
+   * @param {number} [velocity=100] Vélocité MIDI (0-127).
+   * @param {boolean} [velocityScaling=true] Si true, la vélocité module le gain.
+   * @returns {void}
+   */
   const noteOn = useCallback(
     (note, velocity = 100, velocityScaling = true) => {
       const ctx = audioCtxRef.current;
@@ -144,7 +219,8 @@ export function useSynth() {
       vibratoOsc.start(now);
 
       // Stocke la voix pour pouvoir la relâcher à `noteOff`.
-      voicesRef.current.set(note, {
+      /** @type {SynthVoice} */
+      const voice = {
         note,
         oscillator: osc,
         harmonicOsc,
@@ -153,14 +229,20 @@ export function useSynth() {
         vibratoGain,
         gainNode,
         filter
-      });
+      };
+      voicesRef.current.set(note, voice);
     },
     [params]
   );
 
-  // Relâche une note en déclenchant la phase Release et en nettoyant la voix.
+  /**
+   * Relâche une note en déclenchant la phase Release et en nettoyant la voix.
+   * @param {number} note Numéro de note MIDI (0-127).
+   * @returns {void}
+   */
   const noteOff = useCallback(
     (note) => {
+      /** @type {SynthVoice|undefined} */
       const voice = voicesRef.current.get(note);
       if (!voice) return;
       const ctx = audioCtxRef.current;

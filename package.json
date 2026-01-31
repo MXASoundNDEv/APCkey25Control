@@ -1,24 +1,27 @@
 {
-  "name": "apckey25control",
-  "version": "1.0.0",
-  "description": "Ce projet permet de contrôler et visualiser l'**Akai APC Key 25** à l'aide de JavaScript et de l'API Web MIDI. Il gère les entrées MIDI, permet de jouer des notes avec vélocité, d'allumer/éteindre les LED des pads, et inclut la gestion de boutons spécifiques, tels que le bouton **Shift**.",
-  "homepage": "https://github.com/MXASoundNDEv/APCkey25Control#readme",
-  "bugs": {
-    "url": "https://github.com/MXASoundNDEv/APCkey25Control/issues"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/MXASoundNDEv/APCkey25Control.git"
-  },
-  "license": "ISC",
-  "author": "",
+  "name": "apc-key25-visualizer",
+  "version": "2.0.0",
+  "description": "Electron + React front-end to drive and visualize the Akai APC Key 25 over Web MIDI.",
+  "main": "electron/main.js",
   "type": "commonjs",
-  "main": "key25.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "dev": "concurrently -k \"vite\" \"npm:electron:dev\"",
+    "web": "vite",
+    "electron:dev": "cross-env VITE_DEV_SERVER_URL=http://localhost:5173 wait-on http://localhost:5173 && electron .",
+    "build": "vite build",
+    "start": "electron .",
+    "lint": "echo \"add eslint if you want linting\""
   },
   "dependencies": {
-    "midi": "^2.0.0"
+    "electron": "^28.2.0",
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
   },
-  "devDependencies": {}
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.2.1",
+    "concurrently": "^9.0.1",
+    "cross-env": "^7.0.3",
+    "vite": "^5.0.11",
+    "wait-on": "^7.2.0"
+  }
 }

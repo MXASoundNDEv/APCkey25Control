@@ -12,3 +12,14 @@
 ## Completed
 
 - [x] plays sound
+
+
+
+- [ ] sync btw sequencer / live rec 
+- [ ] sound core 
+- [ ] temp core
+- [ ] effect
+    - [ ] effect module custom
+
+- [ ] osciloscope view by effect
+- [ ] osciolesope reqct module for advanded perf 

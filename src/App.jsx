@@ -82,14 +82,21 @@ export default function App() {
   const heldComputerKeys = useRef(new Set());
   const recordStartRef = useRef(null);
   const loopTimersRef = useRef([]);
+  const loopAnchorRef = useRef(0);
   const recordingRef = useRef(false);
   const loopingRef = useRef(false);
   const loopEventsRef = useRef([]);
   const loopLengthRef = useRef(0);
+  const loopStepsRef = useRef(0);
+  const stepMsRef = useRef(60000 / 120 / 4);
   const [recording, setRecording] = useState(false);
   const [looping, setLooping] = useState(false);
   const [loopEvents, setLoopEvents] = useState([]);
   const [loopLength, setLoopLength] = useState(0);
+
+  const stepMs = useMemo(() => 60000 / tempo / 4, [tempo]);
+  const stepsPerBar = 16;
+  const barMs = useMemo(() => stepMs * stepsPerBar, [stepMs]);
   const midiListener = useCallback((message) => {
     if (messageHandlerRef.current) {
       messageHandlerRef.current(message);
@@ -102,6 +109,10 @@ export default function App() {
     loopEventsRef.current = loopEvents;
     loopLengthRef.current = loopLength;
   }, [recording, looping, loopEvents, loopLength]);
+
+  useEffect(() => {
+    stepMsRef.current = stepMs;
+  }, [stepMs]);
 
   const {
     midiSupported,
@@ -140,8 +151,9 @@ export default function App() {
   const recordEvent = useCallback(
     (note, type, velocity = 0, useVelocityScaling = true) => {
       if (!recordingRef.current || recordStartRef.current === null) return;
-      const time = performance.now() - recordStartRef.current;
-      setLoopEvents((prev) => [...prev, { note, type, velocity, useVelocityScaling, time }]);
+      const timeMs = performance.now() - recordStartRef.current;
+      const step = Math.round(timeMs / stepMsRef.current);
+      setLoopEvents((prev) => [...prev, { note, type, velocity, useVelocityScaling, step }]);
     },
     []
   );
@@ -232,33 +244,45 @@ export default function App() {
     activeNotes.forEach((note) => stopNote(note));
   }, [activeNotes, clearLoopTimers, stopNote]);
 
-  const scheduleLoopCycle = useCallback(() => {
+  const scheduleLoopCycle = useCallback((cycleStartMs) => {
     const events = loopEventsRef.current;
-    const duration = loopLengthRef.current;
+    const totalSteps = loopStepsRef.current;
+    const duration = totalSteps * stepMsRef.current;
     if (!events.length || duration <= 0 || !loopingRef.current) return;
 
+    const startMs = cycleStartMs ?? performance.now();
+
     events.forEach((ev) => {
+      const delay = Math.max(0, startMs - performance.now() + ev.step * stepMsRef.current);
       const id = setTimeout(() => {
         if (!loopingRef.current) return;
         if (ev.type === 'on') startNote(ev.note, ev.velocity, ev.useVelocityScaling);
         else stopNote(ev.note);
-      }, ev.time);
+      }, delay);
       loopTimersRef.current.push(id);
     });
 
+    const nextCycleStart = startMs + duration;
+    const nextDelay = Math.max(0, nextCycleStart - performance.now());
     const nextCycle = setTimeout(() => {
-      scheduleLoopCycle();
-    }, duration);
+      scheduleLoopCycle(nextCycleStart);
+    }, nextDelay);
     loopTimersRef.current.push(nextCycle);
   }, [startNote, stopNote]);
 
   const startLoop = useCallback(() => {
-    if (!loopEvents.length || loopLength <= 0) return;
+    const events = loopEventsRef.current;
+    const totalSteps = loopStepsRef.current;
+    if (!events.length || totalSteps <= 0) return;
     clearLoopTimers();
     setLooping(true);
     loopingRef.current = true;
-    scheduleLoopCycle();
-  }, [clearLoopTimers, loopEvents, loopLength, scheduleLoopCycle]);
+    const duration = totalSteps * stepMsRef.current;
+    const now = performance.now();
+    const alignOffset = duration > 0 ? (duration - (now % duration)) % duration : 0;
+    loopAnchorRef.current = now + alignOffset;
+    scheduleLoopCycle(loopAnchorRef.current);
+  }, [clearLoopTimers, scheduleLoopCycle]);
 
   const toggleLoop = useCallback(() => {
     if (loopingRef.current) {
@@ -274,14 +298,22 @@ export default function App() {
       recordingRef.current = false;
       const now = performance.now();
       const rawDuration = Math.max(100, now - (recordStartRef.current || now));
+      const stepMsValue = stepMsRef.current;
+      const rawSteps = Math.max(1, Math.round(rawDuration / stepMsValue));
+      const bars = Math.max(1, Math.round(rawSteps / stepsPerBar));
+      const totalSteps = bars * stepsPerBar;
+      loopStepsRef.current = totalSteps;
+      const duration = totalSteps * stepMsValue;
+      setLoopLength(duration);
+      loopLengthRef.current = duration;
+
       setLoopEvents((prev) => {
-        const sorted = [...prev].sort((a, b) => a.time - b.time);
+        const clamped = prev.map((ev) => ({
+          ...ev,
+          step: Math.min(ev.step, totalSteps - 1)
+        }));
+        const sorted = clamped.sort((a, b) => a.step - b.step);
         loopEventsRef.current = sorted;
-        const lastEvent = sorted[sorted.length - 1];
-        const safeTail = 200; // ms pour laisser finir le release
-        const duration = Math.max(rawDuration, (lastEvent?.time || 0) + safeTail);
-        setLoopLength(duration);
-        loopLengthRef.current = duration;
         return sorted;
       });
     } else {
@@ -290,6 +322,7 @@ export default function App() {
       loopingRef.current = false;
       setLoopEvents([]);
       loopEventsRef.current = [];
+      loopStepsRef.current = 0;
       recordStartRef.current = performance.now();
       setRecording(true);
       recordingRef.current = true;
@@ -383,6 +416,18 @@ export default function App() {
       clearLoopTimers();
     };
   }, [clearLoopTimers]);
+
+  useEffect(() => {
+    if (loopStepsRef.current > 0) {
+      const duration = loopStepsRef.current * stepMs;
+      setLoopLength(duration);
+      loopLengthRef.current = duration;
+      if (loopingRef.current) {
+        clearLoopTimers();
+        startLoop();
+      }
+    }
+  }, [barMs, clearLoopTimers, startLoop, stepMs]);
 
   useEffect(() => {
     const onKeyDown = (e) => {
